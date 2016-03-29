@@ -1,0 +1,183 @@
+﻿<!DOCTYPE html>
+<!--
+  Monophonic, WebMidi input, WebAudio output trivial synth
+  responds to velocity (affects amplitude envelope), pitchbend, 
+  & modulation depth (does vibrato).
+  
+  The selection of MIDI CC is basically what a Korg Microkey 
+  puts out by default.
+  -->
+<script>
+	var context=null;   	    // the Web Audio "context" object
+    var midiAccess=null; 	  // the MIDIAccess object.
+    var oscillator=null;  	// the single oscillator
+    var envelope=null;    	// the envelope for the single oscillator
+    var modulator=null;     // LFO depth
+    var attack=0.1;      	  // attack speed
+    var maxVol=0.2;         // MAXIMUM VOLUME not too loud please
+    var release=0.05;   	  // release speed
+    var portamento=0.03;  	// portamento/glide speed
+    var bendTime=0.01;      // like portamento but for pitch bend
+    var activeNotes = []; 	// the stack of actively-pressed keys
+
+    window.addEventListener('load', function() {
+      // patching up prefixes no longer needed
+      // window.AudioContext=window.AudioContext||window.webkitAudioContext;
+
+      context = new AudioContext();
+      if (navigator.requestMIDIAccess)
+        navigator.requestMIDIAccess().then( onMIDIInit, onMIDIReject );
+      else
+        alert("No MIDI support present in your browser.")
+
+      // set up the oscillator chain, muted to begin with.
+      oscillator = context.createOscillator();
+      oscillator.type = "sawtooth";
+      oscillator.frequency.setValueAtTime(110, 0);
+      // a low frequency oscillator; default sine waveform is fine here
+      lfo = context.createOscillator();
+      // lfo.type = "square";
+      lfo.frequency.setValueAtTime(8, 0);
+      // simple AD envelope for note articulation
+      envelope = context.createGain();
+      oscillator.connect(envelope);
+      // another gain node for modulation depth
+      modulator = context.createGain();
+      lfo.connect(modulator);
+      // actually modulate something (pitch)
+      modulator.connect(oscillator.frequency);
+      // and hear the result
+      envelope.connect(context.destination);
+      // kick things off
+      envelope.gain.value = 0.0;  // Mute the sound
+      modulator.gain.value = 0.0; // no modulation
+      lfo.start(0);
+      oscillator.start(0);  // Start up the oscillators
+    } );
+
+    function onMIDIInit(midi) {
+      midiAccess = midi;
+
+      var haveAtLeastOneDevice=false;
+      var inputs=midiAccess.inputs.values();
+      for ( var input = inputs.next(); input && !input.done; input = inputs.next()) {
+        input.value.onmidimessage = MIDIMessageEventHandler;
+        haveAtLeastOneDevice = true;
+      }
+      if (!haveAtLeastOneDevice)
+        alert("WebMIDI supported, but no MIDI input devices detected");
+    }
+
+    function onMIDIReject(err) {
+      alert("The MIDI system failed to start.  Sorry!");
+    }
+
+    function MIDIMessageEventHandler(event) {
+
+      // Mask off the lower nibble (MIDI channel, which we don't care about)
+      switch (event.data[0] & 0xf0) {
+        case 0xE0:  // Pitch Bend, a 14bit value
+          // bend can be up or down, center is 0x2000 so make this signed
+          var bend = (event.data[1]  + event.data[2] * 127) - 0x2000;
+          // console.log("Pitch Bend " + bend);
+          pitchBend(bend);
+          break;
+        case 0xB0:  // Control Change, see 
+                    // https://www.midi.org/specifications/item/table-3-control-change-messages-data-bytes-2
+          switch (event.data[1]) { // CC number
+            case 0x01:  // Modulation
+              var depth = event.data[2];
+              modulate(depth);
+              // console.log("Modulation " + event.data[2]);
+              break;
+            case 0x02:  // Breath
+              // console.log("Breath " + event.data[2]);
+              break;
+            case 0x40:  // Sustain, on or off
+              if (event.data[2] <= 63) {
+                // console.log("Sustain off");
+              } else {
+                // console.log("Sustain on");
+              }
+              break;
+          }
+          break;
+        case 0x90: 	// NoteOn
+          var velocity = event.data[2];
+          if (velocity!=0) {  // actual note-on message
+            noteOn(event.data[1], 127 / velocity);
+            // console.log("NoteOn: number " + event.data[1] + " velocity " + velocity);
+            return;
+          }
+          // no break! if velocity == 0, fall thru: it's actually a running-status note-off.
+        case 0x80: 	// NoteOff
+          var offVelocity = event.data[2];  // off velocity is rarely used 
+          noteOff(event.data[1]);
+          // report NoteOff velocity, in case it is actually sent
+          // console.log("NoteOff: number " + event.data[1] + " velocity " + offVelocity);
+          return;
+      }
+    }
+
+    function frequencyFromNoteNumber( note ) {
+      // exponential frequency scale. 12 notes per octave.
+      // MIDI note 69 is concert A, 440Hz
+      return 440 * Math.pow(2,(note-69)/12);
+    }
+
+    function noteOn(noteNumber, attk) {
+      // simple monophonic, most-recent priority note queue
+      activeNotes.push( noteNumber );
+      // stop the previous note, if any
+      oscillator.frequency.cancelScheduledValues(0);
+      // glide up to the new note
+      oscillator.frequency.setTargetAtTime( frequencyFromNoteNumber(noteNumber), 0, portamento );
+      // cancel previous envelope
+      envelope.gain.cancelScheduledValues(0);
+      // attack phase of new envelope
+      envelope.gain.setTargetAtTime(1.0, 0, attack * attk);
+      // console.log("Held notes: " + activeNotes.length);
+      // console.log(activeNotes);
+    }
+
+    function noteOff(noteNumber) {
+      var position = activeNotes.indexOf(noteNumber);
+      if (position!=-1) {   // corresponds to an actually playing note
+        // delete that note
+        activeNotes.splice(position,1);
+      }
+      if (activeNotes.length==0) { // no held notes 
+        // shut off the envelope
+        envelope.gain.cancelScheduledValues(0);
+        envelope.gain.setTargetAtTime(0.0, 0, release );
+        // console.log("No held notes")
+      } else {    // still some keys pressed
+        oscillator.frequency.cancelScheduledValues(0);
+        oscillator.frequency.setTargetAtTime( frequencyFromNoteNumber(activeNotes[activeNotes.length-1]), 0, portamento );
+        // console.log("Held notes: " + activeNotes.length);
+        // console.log(activeNotes);
+      }
+    }
+
+    function modulate(mod) {
+      var maxMod = 5;   // 
+      var modul = maxMod * mod / 127;
+      console.log("Modulating by " + modul);
+      modulator.gain.setTargetAtTime(modul, 0, 0.01 );
+    }
+
+    function pitchBend(bend) {
+      var maxBend = 3;  // in semitones, so 12 is one octave
+      // this should ideally be settable through the RPNs for pitch bend maxBend
+      var current = activeNotes.length;
+      if (current > 0) { // there are notes playing
+        var oldNote = activeNotes[current-1];
+        // pitchbend is signed value in range +/- 8k
+        var newNote = oldNote + maxBend * bend / 8192;
+        // console.log(activeNotes);
+        // console.log("bend = " + bend)
+        // console.log("Bending from " + oldNote + " to " + newNote);
+        oscillator.frequency.setTargetAtTime( frequencyFromNoteNumber( newNote), 0, bendTime);
+      }
+    }
+    </script>
