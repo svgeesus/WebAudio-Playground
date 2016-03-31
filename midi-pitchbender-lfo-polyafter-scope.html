@@ -2,17 +2,18 @@
 <!--
   Monophonic, WebMidi input, WebAudio output trivial synth
   responds to velocity (affects amplitude envelope), pitchbend, 
-  & modulation depth (does vibrato).
+  modulation depth (does vibrato) and polyphonic aftertouch
+  (also vibrato).
   Displays the waveform.
   
   The selection of MIDI CC is basically what a Korg Microkey 
   puts out by default. Also tested with a CME Xkey.
-  -->
-  <!--
+ 
   todo:
   no need for window.
   CONST instead of var
   move globals into objects
+  poly AT modulates filter cutoff
   -->
 
 <html lang="en"><head><style>
@@ -65,7 +66,6 @@
       oscillator.frequency.setValueAtTime(110, 0);
       // a low frequency oscillator; default sine waveform is fine here
       lfo = context.createOscillator();
-      // lfo.type = "square";
       lfo.frequency.setValueAtTime(8, 0);
       // simple AD envelope for note articulation
       envelope = context.createGain();
@@ -112,6 +112,10 @@
       
       // Mask off the lower nibble (MIDI channel, which we don't care about)
       switch (event.data[0] & 0xf0) {
+        case 0xA0:  // Polyphonic aftertouch 
+          console.log("key " + event.data[1] + " aftertouch " + event.data[2]);
+          modulate(event.data[2]);
+          break;
         case 0xE0:  // Pitch Bend, a 14bit value
           // bend can be up or down, center is 0x2000 so make this signed
           var bend = (event.data[1]  + event.data[2] * 127) - 0x2000;

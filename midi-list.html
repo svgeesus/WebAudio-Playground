@@ -1,0 +1,61 @@
+﻿<!DOCTYPE html>
+<!--
+  WebMidi input and output list.
+
+  -->
+<script>
+	var context=null;   	    // the Web Audio "context" object
+    var midiAccess=null; 	  // the MIDIAccess object.
+    var oscillator=null;  	// the single oscillator
+    var envelope=null;    	// the envelope for the single oscillator
+    var attack=0.1;      	  // attack speed
+    var maxVol=0.2;         // MAXIMUM VOLUME not too loud please
+    var release=0.05;   	  // release speed
+    var portamento=0.03;  	// portamento/glide speed
+    var bendTime=0.01;      // like portamento but for pitch bend
+    var activeNotes = []; 	// the stack of actively-pressed keys
+
+    window.addEventListener('load', function() {
+      if (navigator.requestMIDIAccess)
+        navigator.requestMIDIAccess().then( listInputsAndOutputs, onMIDIReject );
+      else
+        alert("No MIDI support present in your browser.")
+      
+    } );
+
+    function onMIDIInit(midi) {
+  
+      midiAccess = midi;
+	/*
+      var haveAtLeastOneDevice=false;
+      var inputs=midiAccess.inputs.values();
+      for ( var input = inputs.next(); input && !input.done; input = inputs.next()) {
+        input.value.onmidimessage = MIDIMessageEventHandler;
+        haveAtLeastOneDevice = true;
+      }
+      if (!haveAtLeastOneDevice)
+        alert("WebMIDI supported, but no MIDI input devices detected");
+    */
+    listInputsAndOutputs(midiAccess);
+    }
+
+    function onMIDIReject(err) {
+      alert("The MIDI system failed to start.  Sorry!");
+    }
+
+    function listInputsAndOutputs( midiAccess ) {
+    	alert("Enumerating MIDI inputs");
+    	console.log(midiAccess.inputs);
+  		for (var entry of midiAccess.inputs) {
+    		var input = entry[1];
+    			console.log( "Input port [type:'" + input.type + "'] id:'" + input.id + "' manufacturer:'" + input.manufacturer + "' name:'" + input.name + "' version:'" + input.version + "'" );
+  			}
+  		alert("Enumerating MIDI outputs");
+  		console.log(midiAccess.outputs);
+  		for (var entry of midiAccess.outputs) {
+    		var output = entry[1];
+    		console.log( "Output port [type:'" + output.type + "'] id:'" + output.id + "' manufacturer:'" + output.manufacturer + "' name:'" + output.name + "' version:'" + output.version + "'" );
+  			}
+	}
+
+    </script>
