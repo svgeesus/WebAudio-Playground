@@ -21,9 +21,12 @@
         width: 500px;
         height: 300px;
         background: #333;
-        // border: 10px solid #100;
-        // scope code assumes entire width is drawable
         border-radius: 16px;
+    }
+    #bezel {
+      border-radius: 16px;
+      border: 10px solid #100;
+      background: none;
     }
 </style></head>
 
@@ -33,7 +36,9 @@
 
 <script src="wavy-jones.js"></script>
    <body>
-      <div id="oscilloscope"></div>
+      <div id="bezel">
+        <div id="oscilloscope"></div>
+      </div>
 
 <script>
 	var context=null;   	    // the Web Audio "context" object
