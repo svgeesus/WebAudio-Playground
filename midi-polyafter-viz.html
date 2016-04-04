@@ -1,0 +1,93 @@
+﻿<!DOCTYPE html>
+<!--
+Check the aftertouch values actually sent
+-->
+
+<html lang="en">
+
+<head>
+    <style>
+
+    </style>
+</head>
+
+<script>
+    var context = null; // the Web Audio "context" object
+    var midiAccess = null; // the MIDIAccess object.
+    var activeNotes = []; // the stack of actively-pressed keys
+    // places to store the values of on-velocity & poly aftertouch
+    const MIDINOTES = 128; // number of keys
+    var velocities = [MIDINOTES];
+    var polyats = [MIDINOTES, 128];
+
+
+    window.addEventListener('load', function() {
+        if (navigator.requestMIDIAccess)
+            navigator.requestMIDIAccess().then(onMIDIInit, onMIDIReject);
+        else
+            alert("No MIDI support present in your browser.");
+        for (var i = 0; i < 128; i++) {
+            velocities[i] = 0;
+            for (var j = 0; j < 128; j++)
+                polyats[i, j] = 0;
+        }
+        console.log(velocities);
+    });
+
+    function onMIDIInit(midi) {
+        midiAccess = midi;
+
+        var haveAtLeastOneDevice = false;
+        var inputs = midiAccess.inputs.values();
+        for (var input = inputs.next(); input && !input.done; input = inputs.next()) {
+            input.value.onmidimessage = MIDIMessageEventHandler;
+            haveAtLeastOneDevice = true;
+        }
+        if (!haveAtLeastOneDevice)
+            alert("WebMIDI supported, but no MIDI input devices detected");
+    }
+
+    function onMIDIReject(err) {
+        alert("The MIDI system failed to start.Sorry!");
+    }
+
+    function MIDIMessageEventHandler(event) {
+
+        // Mask off the lower nibble (MIDI channel, which we don't care about)
+        switch (event.data[0] & 0xf0) {
+            case 0xA0: // Polyphonic aftertouch 
+			/*
+                console.log("key " + event.data[1] + " aftertouch " + event.data[2]);
+                modulate(event.data[2]);
+				*/
+                break;
+
+            case 0x90: // NoteOn
+                var note = event.data[1];
+                var velocity = event.data[2];
+                if (velocity != 0) { // actual note-on message
+                    velocities[velocity]++;
+                    return;
+                }
+            case 0xB0: // Control Change
+                switch (event.data[1]) { // CC number
+                    case 0x40: // Sustain, on or off; used to toggle data display
+                        if (event.data[2] >= 63) {
+                            // sustain on triggers visualisation
+                            /* for (var i = 0; i < 128; i++) {
+								
+                            } */
+							console.log(velocities);
+                        } else {
+                            // console.log("Sustain on");
+                        }
+                        break;
+                };
+        }
+
+
+
+
+	}
+</script>
+</body>
